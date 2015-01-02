@@ -52,6 +52,7 @@ def execute(*args):
 
 def _pipeline(commands, fd_in, fd_out, fd_err):
   """Run a series of commands connected by their stdout/stdin."""
+  pids = []
   first = True
 
   for i, command in enumerate(commands):
@@ -61,8 +62,8 @@ def _pipeline(commands, fd_in, fd_out, fd_err):
     if not last:
       fd_in_new, fd_out_new = pipe()
 
-    pid = fork()
-    child = pid == 0
+    pids += [fork()]
+    child = pids[-1] == 0
 
     if child:
       if not first:
@@ -105,12 +106,42 @@ def _pipeline(commands, fd_in, fd_out, fd_err):
         fd_in_old = fd_in_new
         fd_out_old = fd_out_new
 
-  return pid
+  return pids
 
 
 def formatPipeline(commands):
   """Convert a pipeline into a string."""
   return " | ".join(map(" ".join, commands))
+
+
+def _wait(pids, commands):
+  """Wait for all processes represented by a list of process IDs.
+
+    Although it might not seem necessary to wait for any other than the
+    last process, we wait for all of them. The main reason is that we
+    want to clean up all left-over zombie processes.
+
+    Notes:
+      We also check the return code of every child process and raise an
+      error in case one of them did not succeed. This behavior differs
+      from that of bash, for instance, where no return code checking is
+      performed for all but the last process in the chain.
+
+      TODO: Check if this behavior is safe in all cases.
+      TODO: If we raise an exception on one but the last command we do
+            not clean up some zombie processes.
+  """
+  assert len(pids) == len(commands)
+
+  for i, pid in enumerate(pids):
+    _, status = waitpid(pid, 0)
+
+    if status != 0:
+      command = formatPipeline([commands[i]])
+      # TODO: Decide whether we want to use subprocess' CalledProcessError
+      #       exception type here or have our own type and remove this
+      #       dependency.
+      raise CalledProcessError(status, command, None)
 
 
 def pipeline(commands):
@@ -120,16 +151,9 @@ def pipeline(commands):
   #       testing but for production it might be better to expose
   #       possible error messages.
   with open(devnull, "w+") as null:
-    pid = _pipeline(commands, *[null.fileno()] * 3)
+    pids = _pipeline(commands, *[null.fileno()] * 3)
 
-  _, status = waitpid(pid, 0)
-
-  if status != 0:
-    string = formatPipeline(commands)
-    # TODO: Decide whether we want to use subprocess' CalledProcessError
-    #       exception type here or have our own type and remove this
-    #       dependency.
-    raise CalledProcessError(status, string, None)
+  _wait(pids, commands)
 
 
 def pipelineAndRead(commands):
@@ -138,7 +162,7 @@ def pipelineAndRead(commands):
   fd_in, fd_out = pipe()
 
   with open(devnull, "w+") as null:
-    pid = _pipeline(commands, null.fileno(), fd_out, null.fileno())
+    pids = _pipeline(commands, null.fileno(), fd_out, null.fileno())
 
   close(fd_out)
 
@@ -156,10 +180,6 @@ def pipelineAndRead(commands):
     data += buf
 
   close(fd_in)
-  _, status = waitpid(pid, 0)
-
-  if status != 0:
-    string = formatPipeline(commands)
-    raise CalledProcessError(status, string, None)
+  _wait(pids, commands)
 
   return data

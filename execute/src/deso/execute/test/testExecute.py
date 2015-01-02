@@ -152,14 +152,20 @@ class TestExecute(TestCase):
 
   def testPipelineWithFailingCommand(self):
     """Verify that a failing command in a pipeline fails the entire execution."""
+    identity = [_TR, "a", "a"]
     commands = [
       [_ECHO, "test-abc-123"],
-      [_TR, "a", "a"],
+      identity,
       [_FALSE],
     ]
 
-    with self.assertRaises(CalledProcessError):
-      pipeline(commands)
+    # Run twice, once with failing command at the end and once somewhere
+    # in the middle.
+    for _ in range(2):
+      with self.assertRaises(CalledProcessError):
+        pipeline(commands)
+
+      commands += [identity]
 
 
 if __name__ == "__main__":
