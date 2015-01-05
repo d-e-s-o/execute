@@ -33,9 +33,6 @@ from os import (
 from os.path import (
   isfile,
 )
-from subprocess import (
-  CalledProcessError,
-)
 from tempfile import (
   mktemp,
 )
@@ -77,7 +74,7 @@ class TestExecute(TestCase):
 
   def testExecuteThrowsOnCommandFailure(self):
     """Verify that a failing command causes an exception to be raised."""
-    with self.assertRaises(CalledProcessError):
+    with self.assertRaises(ChildProcessError):
       execute(_FALSE)
 
 
@@ -163,7 +160,7 @@ class TestExecute(TestCase):
     # Run twice, once with failing command at the end and once somewhere
     # in the middle.
     for _ in range(2):
-      with self.assertRaises(CalledProcessError):
+      with self.assertRaises(ChildProcessError):
         pipeline(commands)
 
       commands += [identity]
