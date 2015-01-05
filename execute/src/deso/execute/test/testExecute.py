@@ -22,6 +22,7 @@
 from deso.execute import (
   execute,
   executeAndRead,
+  findCommand,
   formatPipeline,
   pipeline,
   pipelineAndRead,
@@ -44,12 +45,12 @@ from unittest import (
 )
 
 
-_TRUE = "/bin/true"
-_FALSE = "/bin/false"
-_ECHO = "/bin/echo"
-_TOUCH = "/bin/touch"
-_TR = "/bin/tr"
-_DD = "/bin/dd"
+_TRUE = findCommand("true")
+_FALSE = findCommand("false")
+_ECHO = findCommand("echo")
+_TOUCH = findCommand("touch")
+_TR = findCommand("tr")
+_DD = findCommand("dd")
 _URAND = "/dev/urandom"
 
 
