@@ -20,10 +20,10 @@
 """Test command execution wrappers."""
 
 from deso.execute import (
-  execute,
+  execute as execute_,
   findCommand,
   formatPipeline,
-  pipeline,
+  pipeline as pipeline_,
 )
 from os import (
   remove,
@@ -47,6 +47,20 @@ _TOUCH = findCommand("touch")
 _CAT = findCommand("cat")
 _TR = findCommand("tr")
 _DD = findCommand("dd")
+
+
+def execute(*args, data_in=None, read_out=False, read_err=False):
+  """Run a program with reading from stderr disabled by default."""
+  return execute_(*args, data_in=data_in,
+                         read_out=read_out,
+                         read_err=read_err)
+
+
+def pipeline(commands, data_in=None, read_out=False, read_err=False):
+  """Run a pipeline with reading from stderr disabled by default."""
+  return pipeline_(commands, data_in=data_in,
+                             read_out=read_out,
+                             read_err=read_err)
 
 
 class TestExecute(TestCase):
@@ -90,6 +104,25 @@ class TestExecute(TestCase):
     """Verify that a failing command causes an exception to be raised."""
     with self.assertRaises(ChildProcessError):
       execute(_FALSE)
+
+
+  def testExecuteThrowsAndReportsError(self):
+    """Verify that a failing command's exception contains the stderr output."""
+    path = mktemp()
+    regex = r"No such file or directory"
+
+    with self.assertRaises(AssertionError):
+      # This command should fail the assertion because reading from
+      # standard error is not turned on and as a result the error message
+      # printed on stderr will not be contained in the ChildProcessError
+      # error message.
+      with self.assertRaisesRegex(ChildProcessError, regex):
+        execute(_CAT, path)
+
+    # When reading from stderr is turned on the exception must contain
+    # the above phrase.
+    with self.assertRaisesRegex(ChildProcessError, regex):
+      execute(_CAT, path, read_err=True)
 
 
   def testFormatPipeline(self):
