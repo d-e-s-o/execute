@@ -134,21 +134,29 @@ def _wait(pids, commands, data_err):
       We also check the return code of every child process and raise an
       error in case one of them did not succeed. This behavior differs
       from that of bash, for instance, where no return code checking is
-      performed for all but the last process in the chain.
-
-      TODO: Check if this behavior is safe in all cases.
-      TODO: If we raise an exception on one but the last command we do
-            not clean up some zombie processes.
+      performed for all but the last process in the chain. This approach
+      is considered more safe in the face of failures. That is, unless
+      there is some form of error checking being performed on the stream
+      being passed through a pipe, there is no way for the last command
+      to notice a failure of a previous command. As such, it might
+      succeed although not the entire input/output was processed
+      overall (because a previous command failed in an intermediate
+      stage). We set a high priority on reporting potential failures to
+      users.
   """
   assert len(pids) == len(commands)
+  failed = None
 
   for i, pid in enumerate(pids):
     _, status = waitpid(pid, 0)
 
-    if status != 0:
-      command = formatPipeline([commands[i]])
-      error = data_err.decode("utf-8") if data_err else None
-      raise ChildProcessError(status, command, error)
+    if status != 0 and not failed:
+      # Only remember the first failure here, then continue clean up.
+      failed = formatPipeline([commands[i]])
+
+  if failed:
+    error = data_err.decode("utf-8") if data_err else None
+    raise ChildProcessError(status, failed, error)
 
 
 def _write(data):

@@ -125,6 +125,25 @@ class TestExecute(TestCase):
       execute(_CAT, path, read_err=True)
 
 
+  def testPipelineThrowsForFirstFailure(self):
+    """Verify that if some commands fail in a pipeline, the error of the first is reported."""
+    for cmd in [_FALSE, _TRUE]:
+      # Note that mktemp does not create the file, it just returns a
+      # file name unique at the time of the invocation.
+      path = mktemp()
+      regex = r"No such file or directory"
+
+      # A pipeline of commands with one or two of them failing.
+      commands = [
+        [_ECHO, "test"],
+        [_CAT, path],
+        [cmd],
+      ]
+
+      with self.assertRaisesRegex(ChildProcessError, regex):
+        pipeline(commands, read_err=True)
+
+
   def testFormatPipeline(self):
     """Test conversion of a series of commands into a string."""
     commands = [
