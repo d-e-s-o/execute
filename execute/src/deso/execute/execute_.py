@@ -294,7 +294,21 @@ class _PipelineFileDescriptors:
           if event & POLLOUT:
             close = _write(data)
           elif event & POLLIN or event & POLLPRI:
-            close = _read(data)
+            if event & POLLHUP:
+              # In case we received a combination of a data-is-available
+              # and a HUP event we need to make sure that we flush the
+              # entire pipe buffer before we stop the polling. Otherwise
+              # we might leave data unread that was successfully sent to
+              # us.
+              # Note that from a logical point of view this problem
+              # occurs only in the receive case. In the write case we
+              # have full control over the file descriptor ourselves and
+              # if the remote side closes its part there is no point in
+              # sending any more data.
+              while not _read(data):
+                pass
+            else:
+              close = _read(data)
 
           # We explicitly (and early, compared to the defers we
           # scheduled previously) close the file descriptor on all error
