@@ -192,9 +192,19 @@ def _read(data):
 _OUT = POLLOUT | POLLHUP | POLLERR
 # The event mask for which to poll for a read channel (such as stdout).
 _IN = POLLPRI | POLLHUP | POLLIN
-# The event mask describing all error events on which we close the
-# respective file descriptor.
-_ERR = POLLHUP | POLLERR | POLLNVAL
+
+
+def eventToString(events):
+  """Convert an event set to a human readable string."""
+  errors = {
+    POLLERR:  "ERR",
+    POLLHUP:  "HUP",
+    POLLIN:   "IN",
+    POLLNVAL: "NVAL",
+    POLLOUT:  "OUT",
+    POLLPRI:  "PRI",
+  }
+  return "|".join([v for k, v in errors.items() if k & events])
 
 
 class _PipelineFileDescriptors:
@@ -311,13 +321,21 @@ class _PipelineFileDescriptors:
               close = _read(data)
 
           # We explicitly (and early, compared to the defers we
-          # scheduled previously) close the file descriptor on all error
-          # events and POLLHUP, or when we received EOF (for reading) or
-          # run out of data to send (for writing).
-          if event & _ERR or close:
+          # scheduled previously) close the file descriptor on POLLHUP,
+          # when we received EOF (for reading), or run out of data to
+          # send (for writing).
+          if event & POLLHUP or close:
             data["close"]()
             data["unreg"]()
             del polls[fd]
+
+          # All error codes are reported to clients such that they can
+          # deal with potentially incomplete data.
+          if event & (POLLERR | POLLNVAL):
+            string = eventToString(event)
+            error = "Error while polling for new data, event: {s} ({e})"
+            error = error.format(s=string, e=event)
+            raise ConnectionError(error)
 
       return self._stdout["data"] if self._stdout else b"",\
              self._stderr["data"] if self._stderr else b""
