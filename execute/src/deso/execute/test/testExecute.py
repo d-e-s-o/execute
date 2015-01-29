@@ -42,8 +42,14 @@ from select import (
   POLLOUT,
   POLLPRI,
 )
+from sys import (
+  executable,
+)
 from tempfile import (
   mktemp,
+)
+from textwrap import (
+  dedent,
 )
 from unittest import (
   TestCase,
@@ -281,6 +287,35 @@ class TestExecute(TestCase):
         pipeline(commands)
 
       commands += [identity]
+
+
+  def testBackgroundTaskIsWaited(self):
+    """Verify that if a started program forks we can see its output as well."""
+    def runAndRead(close=False):
+      """Run a script and read its output."""
+      script = bytes(dedent("""\
+        from os import close, fork
+        from sys import stdout
+        from time import sleep
+
+        pid = fork()
+        if pid == 0:
+          {cmd}
+          sleep(1)
+          print("CHILD")
+        else:
+          print("PARENT")
+      """).format(cmd="close(stdout.fileno())" if close else ""), "utf-8")
+
+      stdout, _ = execute(executable, data_in=script, read_out=True)
+      return stdout
+
+    stdout = runAndRead()
+    self.assertTrue(stdout == b"PARENT\nCHILD\n" or
+                    stdout == b"CHILD\nPARENT\n", stdout)
+
+    stdout = runAndRead(close=True)
+    self.assertTrue(stdout == b"PARENT\n", stdout)
 
 
 if __name__ == "__main__":
