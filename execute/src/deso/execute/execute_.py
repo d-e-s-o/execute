@@ -355,15 +355,15 @@ class _PipelineFileDescriptors:
       """Setup a pipe for writing data."""
       data["in"], data["out"] = pipe2(O_CLOEXEC)
       data["data"] = argument
-      data["close"] = later.defer(lambda: close_(data["out"]))
-      here.defer(lambda: close_(data["in"]))
+      data["close"] = later.defer(close_, data["out"])
+      here.defer(close_, data["in"])
 
     def pipeRead(argument, data):
       """Setup a pipe for reading data."""
       data["in"], data["out"] = pipe2(O_CLOEXEC)
       data["data"] = argument
-      data["close"] = later.defer(lambda: close_(data["in"]))
-      here.defer(lambda: close_(data["out"]))
+      data["close"] = later.defer(close_, data["in"])
+      here.defer(close_, data["out"])
 
     # By default we are blockable, i.e., we invoke poll without a
     # timeout. This property has to be an attribute of the object
@@ -385,7 +385,7 @@ class _PipelineFileDescriptors:
     # anyway.
     if stdin is None or stdout is None or stderr is None:
       null = open_(devnull, O_RDWR | O_CLOEXEC)
-      here.defer(lambda: close_(null))
+      here.defer(close_, null)
 
       if stdin is None:
         stdin = null
@@ -439,14 +439,14 @@ class _PipelineFileDescriptors:
       """Conditionally set up polling for write events."""
       if data:
         poll_.register(data["out"], _OUT)
-        data["unreg"] = d.defer(lambda: poll_.unregister(data["out"]))
+        data["unreg"] = d.defer(poll_.unregister, data["out"])
         polls[data["out"]] = data
 
     def pollRead(data):
       """Conditionally set up polling for read events."""
       if data:
         poll_.register(data["in"], _IN)
-        data["unreg"] = d.defer(lambda: poll_.unregister(data["in"]))
+        data["unreg"] = d.defer(poll_.unregister, data["in"])
         polls[data["in"]] = data
 
     # We need a poll object if we want to send any data to stdin or want
