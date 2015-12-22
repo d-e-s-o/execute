@@ -66,7 +66,9 @@ from os import (
   waitpid as waitpid_,
   write,
   WIFEXITED,
+  WIFSIGNALED,
   WEXITSTATUS,
+  WTERMSIG,
 )
 from select import (
   PIPE_BUF,
@@ -153,6 +155,9 @@ def _waitpid(pid):
 
   if WIFEXITED(status):
     return WEXITSTATUS(status)
+  elif WIFSIGNALED(status):
+    # Signals are usually represented as the negated signal number.
+    return -WTERMSIG(status)
   else:
     assert False, "Process %d did not exit normally. Unsupported."
 

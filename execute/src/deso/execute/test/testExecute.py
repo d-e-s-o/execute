@@ -47,6 +47,10 @@ from select import (
   POLLOUT,
   POLLPRI,
 )
+from subprocess import (
+  CalledProcessError,
+  check_call,
+)
 from sys import (
   executable,
 )
@@ -137,6 +141,36 @@ class TestExecute(TestCase):
       execute(executable, "-c", "exit(-1)")
 
     self.assertEqual(e.exception.status, 255)
+
+
+  def testExitCodeForSignals(self):
+    """Verify that exit codes for the subprocess and execute module are the same."""
+    def retrieveSubprocessStatus(script):
+      """Retrieve the status code of a killed process when run using the subprocess module."""
+      with self.assertRaises(CalledProcessError) as e:
+        check_call([executable, "-c", script])
+
+      return e.exception.returncode
+
+    def retrieveExecuteStatus(script):
+      """Retrieve the status code of a killed process when run using the execute module."""
+      with self.assertRaises(ProcessError) as e:
+        execute(executable, "-c", script)
+
+      return e.exception.status
+
+    def doCheck(script):
+      """Check that exit codes for the subprocess and execute module match for a given script."""
+      execute_status = retrieveExecuteStatus(script)
+      subprocess_status = retrieveSubprocessStatus(script)
+      self.assertEqual(execute_status, subprocess_status)
+
+    doCheck("from os import getpid, kill; kill(getpid(), 9)")
+    doCheck("from os import getpid, kill; kill(getpid(), 15)")
+    doCheck("exit(-1)")
+    doCheck("exit(-127)")
+    doCheck("exit(1)")
+    doCheck("exit(255)")
 
 
   def testExecuteErrorStatus(self):
