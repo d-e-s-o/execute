@@ -36,6 +36,9 @@ from os import (
 from os.path import (
   isfile,
 )
+from re import (
+  escape,
+)
 from select import (
   POLLERR,
   POLLHUP,
@@ -108,6 +111,14 @@ class TestExecute(TestCase):
 
     with self.assertRaisesRegex(ProcessError, regex):
       execute(_CAT, tmp_file, stderr=b"")
+
+
+  def testExecuteErrorStatus(self):
+    """Verify that the reported process execution status is correct."""
+    with self.assertRaises(ProcessError) as e:
+      execute(executable, "-c", "exit(25)")
+
+    self.assertEqual(e.exception.status, 25)
 
 
   def testExecuteErrorEventToStringSingle(self):
@@ -346,6 +357,21 @@ class TestExecute(TestCase):
       doTest(i)
 
 
+  def testPipelineErrorStatus(self):
+    """Verify that the reported pipeline status is correct."""
+    command = [executable, "-c", "exit(42)"]
+    commands = [
+      [_TRUE],
+      command,
+      [_TRUE],
+    ]
+    regex = r"%s" % escape(formatCommands(command))
+    with self.assertRaisesRegex(ProcessError, regex) as e:
+      pipeline(commands)
+
+    self.assertEqual(e.exception.status, 42)
+
+
   def testPipelineWithRead(self):
     """Test execution of a pipeline and reading the output."""
     commands = [
@@ -457,6 +483,33 @@ class TestExecute(TestCase):
 
       with self.assertRaisesRegex(ProcessError, regex):
         spring(commands, stderr=b"")
+
+
+  def testSpringErrorStatus(self):
+    """Verify that the reported spring execution status is correct."""
+    def doTest(spring_cmd, pipe_cmd, formatted):
+      """Execute a test for checking status codes in a spring."""
+      commands = [
+        [
+          [_TRUE],
+          spring_cmd,
+          [_TRUE],
+        ],
+        pipe_cmd,
+      ]
+
+      regex = r"%s" % escape(formatted)
+      with self.assertRaisesRegex(ProcessError, regex) as e:
+        spring(commands)
+
+      self.assertEqual(e.exception.status, 255)
+
+    fail = [executable, "-c", "exit(255)"]
+    succeed = [_TRUE]
+    formatted = formatCommands(fail)
+
+    doTest(fail, succeed, formatted)
+    doTest(succeed, fail, formatted)
 
 
   def testSpringWriteFileDescriptor(self):

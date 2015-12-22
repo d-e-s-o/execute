@@ -63,8 +63,10 @@ from os import (
   open as open_,
   pipe2,
   read,
-  waitpid,
+  waitpid as waitpid_,
   write,
+  WIFEXITED,
+  WEXITSTATUS,
 )
 from select import (
   PIPE_BUF,
@@ -131,6 +133,21 @@ class ProcessError(ChildProcessError):
   def stderr(self):
     """Retrieve the stderr output, if any, of the process that failed."""
     return self._stderr
+
+
+def _waitpid(pid):
+  """Convenience wrapper around the original waitpid invocation."""
+  # 0 and -1 trigger a different behavior in waitpid. We disallow those
+  # values.
+  assert pid > 0
+
+  pid_, status = waitpid_(pid, 0)
+  assert pid_ == pid
+
+  if WIFEXITED(status):
+    return WEXITSTATUS(status)
+  else:
+    assert False, "Process %d did not exit normally. Unsupported."
 
 
 def execute(*args, stdin=None, stdout=None, stderr=b""):
@@ -287,7 +304,7 @@ def _wait(pids, commands, data_err, status=0, failed=None):
   assert status == 0 or len(failed) > 0
 
   for i, pid in enumerate(pids):
-    _, this_status = waitpid(pid, 0)
+    this_status = _waitpid(pid)
     if this_status != 0 and status == 0:
       # Only remember the first failure here, then continue clean up.
       failed = formatCommands([commands[i]])
@@ -672,7 +689,7 @@ def _spring(commands, fds):
         pollData(poller)
 
       if not last:
-        _, status = waitpid(pid, 0)
+        status = _waitpid(pid)
         if status != 0:
           # One command failed. Do not start any more commands and
           # indicate failure to the caller. The caller may try reading
