@@ -97,6 +97,13 @@ class ProcessError(ChildProcessError):
   def __init__(self, status, name, stderr=None):
     super().__init__()
 
+    # POSIX let's us have an error range of 8 bits. We do not want to
+    # enforce any policy here, so even allow 0. Although it does not
+    # make much sense to have that in an error class. Note that we allow
+    # negative values equally well, as long as they do not cause an
+    # underflow resulting in an effective return code of 0.
+    assert -256 < status and status < 256, status
+
     self._status = status
     self._name = name
     self._stderr = stderr

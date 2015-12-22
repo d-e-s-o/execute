@@ -113,6 +113,32 @@ class TestExecute(TestCase):
       execute(_CAT, tmp_file, stderr=b"")
 
 
+  def testExitCodeTruncation(self):
+    """Check that exit codes are still truncated.
+
+      This test is less a test but more a verification of the fact that
+      return codes are truncated (exit codes > 255 with only high bits
+      set result in 0 being reported to the outside). This bug is
+      tracked as 'issue24052' [1].
+      Once (or rather: if) this behavior is changed we could think about
+      using 'waitid' as opposed to 'waitpid' since it supports status
+      codes wider than 8 bit.
+
+      [1] http://bugs.python.org/issue24052
+    """
+    execute(executable, "-c", "exit(256)")
+    # Negative codes are affected equally.
+    execute(executable, "-c", "exit(-256)")
+
+
+  def testExitCodeNegativeUnderflow(self):
+    """Check that negative error codes cause an underflow."""
+    with self.assertRaises(ProcessError) as e:
+      execute(executable, "-c", "exit(-1)")
+
+    self.assertEqual(e.exception.status, 255)
+
+
   def testExecuteErrorStatus(self):
     """Verify that the reported process execution status is correct."""
     with self.assertRaises(ProcessError) as e:
