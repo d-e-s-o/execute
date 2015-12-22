@@ -620,6 +620,7 @@ def _spring(commands, fds):
   # (possibly empty) pipeline that processes the output of the spring.
   spring_cmds = commands[0]
   pipe_cmds = commands[1:]
+  pipe_len = len(pipe_cmds)
 
   # We need a pipe to connect the spring's output with the pipeline's
   # input, if there is a pipeline following the spring.
@@ -679,7 +680,11 @@ def _spring(commands, fds):
         # If we reached the last command in the spring we can just have
         # it run in background and wait for it to finish later on -- no
         # more serialization is required at that point.
-        pids += [pid]
+        # We insert the pid just before the pids for the pipeline. The
+        # pipeline is started early but it runs the longest (because it
+        # processes the output of the spring) and we must keep this
+        # order in the pid list.
+        pids[-pipe_len:-pipe_len] = [pid]
 
   if pipe_cmds:
     close_(fd_in_new)
