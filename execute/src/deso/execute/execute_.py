@@ -252,7 +252,7 @@ def formatCommands(commands):
   return s
 
 
-def _wait(pids, commands, data_err, failed=None):
+def _wait(pids, commands, data_err, status=0, failed=None):
   """Wait for all processes represented by a list of process IDs.
 
     Although it might not seem necessary to wait for any other than the
@@ -282,15 +282,18 @@ def _wait(pids, commands, data_err, failed=None):
   # already execute (and wait for) all but the last of these "internal"
   # commands.
   assert len(pids) <= len(commands)
+  # If an error status is set we also must have received the failed
+  # command.
+  assert status == 0 or len(failed) > 0
 
   for i, pid in enumerate(pids):
-    _, status = waitpid(pid, 0)
-
-    if status != 0 and not failed:
+    _, this_status = waitpid(pid, 0)
+    if this_status != 0 and status == 0:
       # Only remember the first failure here, then continue clean up.
       failed = formatCommands([commands[i]])
+      status = this_status
 
-  if failed:
+  if status != 0:
     error = data_err.decode("utf-8") if data_err else None
     raise ProcessError(status, failed, error)
 
@@ -608,6 +611,7 @@ def _spring(commands, fds):
 
   pids = []
   first = True
+  status = 0
   failed = None
   poller = None
 
@@ -691,7 +695,7 @@ def _spring(commands, fds):
     close_(fd_out_new)
 
   assert poller
-  return pids, poller, failed
+  return pids, poller, status, failed
 
 
 def spring(commands, stdout=None, stderr=b""):
@@ -709,7 +713,7 @@ def spring(commands, stdout=None, stderr=b""):
 
       # Finally execute our spring and pass in the prepared file
       # descriptors to use.
-      pids, poller, failed = _spring(commands, fds)
+      pids, poller, status, failed = _spring(commands, fds)
 
     # We started all processes and will wait for them to finish. From
     # now on we can allow any invocation of poll to block.
@@ -721,5 +725,5 @@ def spring(commands, stdout=None, stderr=b""):
 
     data_out, data_err = fds.data()
 
-  _wait(pids, commands, data_err, failed=failed)
+  _wait(pids, commands, data_err, status=status, failed=failed)
   return data_out, data_err
