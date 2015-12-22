@@ -483,6 +483,55 @@ class TestExecute(TestCase):
       commands += [identity]
 
 
+  def testPipelineSigstopHandling(self):
+    """Stop and continue a process in a pipeline and check for proper handling."""
+    script1 = dedent("""\
+      from os import getpid
+      from signal import SIGCONT, signal, sigwait
+      from sys import stdout
+
+      def handler(signum, _):
+        pass
+
+      signal(SIGCONT, handler)
+      print("%d" % getpid())
+      stdout.flush()
+      sigwait([SIGCONT])
+      print("SUCCESS")
+    """)
+
+    # Note that strictly speaking there is no guarantee that we are
+    # actually stopping and continuing the first process. And I have my
+    # doubts that we are. But this is all we got (and probably what we
+    # can do).
+    script2 = dedent("""\
+      from os import kill
+      from signal import SIGCONT, SIGSTOP
+      from sys import stdin
+      from time import sleep
+
+      pid = int(stdin.readline())
+      kill(pid, SIGSTOP)
+      print("STOPPED")
+      kill(pid, SIGCONT)
+      # For some reason the first signal will only wake up the other
+      # program but not invoke the registered signal handler. So send a
+      # second signal (after some time) here to invoke it properly. It
+      # remains unknown why a signal could be missed when sending two
+      # signals in rapid succession.
+      sleep(1)
+      kill(pid, SIGCONT)
+      print("CONTINUED")
+    """)
+
+    commands = [
+      [executable, "-c", script1],
+      [executable, "-c", script2],
+    ]
+    out, _ = pipeline(commands, stdout=b"", stderr=b"")
+    self.assertEqual(out, b"STOPPED\nCONTINUED\n")
+
+
   def testSpringNoOutput(self):
     """Execute a spring without capturing its output."""
     commands = [[_ECHO, "test1"], [_ECHO, "test2"]]

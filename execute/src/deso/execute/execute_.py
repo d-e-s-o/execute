@@ -65,8 +65,10 @@ from os import (
   read,
   waitpid as waitpid_,
   write,
+  WIFCONTINUED,
   WIFEXITED,
   WIFSIGNALED,
+  WIFSTOPPED,
   WEXITSTATUS,
   WTERMSIG,
 )
@@ -150,16 +152,22 @@ def _waitpid(pid):
   # values.
   assert pid > 0
 
-  pid_, status = waitpid_(pid, 0)
-  assert pid_ == pid
+  while True:
+    pid_, status = waitpid_(pid, 0)
+    assert pid_ == pid
 
-  if WIFEXITED(status):
-    return WEXITSTATUS(status)
-  elif WIFSIGNALED(status):
-    # Signals are usually represented as the negated signal number.
-    return -WTERMSIG(status)
-  else:
-    assert False, "Process %d did not exit normally. Unsupported."
+    if WIFEXITED(status):
+      return WEXITSTATUS(status)
+    elif WIFSIGNALED(status):
+      # Signals are usually represented as the negated signal number.
+      return -WTERMSIG(status)
+    elif WIFSTOPPED(status) or WIFCONTINUED(status):
+      # In our current usage scenarios we can simply ignore SIGSTOP and
+      # SIGCONT by restarting the wait.
+      continue
+    else:
+      assert False
+      return 1
 
 
 def execute(*args, stdin=None, stdout=None, stderr=b""):
