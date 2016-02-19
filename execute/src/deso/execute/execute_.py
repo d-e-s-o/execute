@@ -46,6 +46,11 @@
     ['/bin/tr', 'a', 'a'],
     ['/bin/dd', 'of=/tmp/output'],
   ]
+
+  Note that executed processes stay alive independently of their parents
+  (i.e., the Python instance in our case). That is, if the parent is
+  killed the child is unaffected. The prctl PR_SET_PDEATHSIG can be used
+  to influence this behavior on a per-child basis.
 """
 
 from deso.cleanup import (
