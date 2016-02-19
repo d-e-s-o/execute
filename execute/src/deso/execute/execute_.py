@@ -114,7 +114,9 @@ class ProcessError(RuntimeError):
 
     self._status = status
     self._name = name
-    self._stderr = stderr
+    # We want to get rid of all leading and trailing newlines
+    # occasionally contained in stderr outputs.
+    self._stderr = stderr.strip() if stderr is not None else None
 
 
   def __str__(self):

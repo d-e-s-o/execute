@@ -1,7 +1,7 @@
 # testExecute.py
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2015 Daniel Mueller (deso@posteo.net)              *
+# *   Copyright (C) 2014-2016 Daniel Mueller (deso@posteo.net)              *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -107,15 +107,24 @@ class TestExecute(TestCase):
 
   def testProcessErrorFormattingStderr(self):
     """Verify that the ProcessError class properly handles new lines."""
-    tmp_file = mktemp()
     # Note that when using ChildProcessError the newline would not
     # appear as a true newline but rather as the actual text '\n' (i.e.,
     # \\n in a string). With ProcessError we are supposed to get a
     # properly interpreted newline.
-    regex = r".*No such file or directory\n"
+    regex = r"missing operand\nTry"
 
     with self.assertRaisesRegex(ProcessError, regex):
-      execute(_CAT, tmp_file, stderr=b"")
+      execute(_TR, stderr=b"")
+
+
+  def testProcessErrorStripping(self):
+    """Verify that ProcessError properly strips its stderr input."""
+    string = "this is a\nmulti-line\ntext"
+
+    with self.assertRaises(ProcessError) as e:
+      raise ProcessError(1, _FALSE, "\t %s\n\n" % string)
+
+    self.assertEqual(e.exception.stderr, string)
 
 
   def testExitCodeTruncation(self):
