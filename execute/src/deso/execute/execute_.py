@@ -1,7 +1,7 @@
 # execute_.py
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2015 Daniel Mueller (deso@posteo.net)              *
+# *   Copyright (C) 2014-2016 Daniel Mueller (deso@posteo.net)              *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -90,14 +90,17 @@ from sys import (
 )
 
 
-class ProcessError(ChildProcessError):
-  """A class enhancing OSError with proper attributes for our use case.
+class ProcessError(RuntimeError):
+  """A class enhancing a the RuntimeError class with proper attributes for our use case.
 
-    The OSError attributes errno, filename, and filename2 do not really
-    describe our use case. Most importantly, however, OSError does not
-    interpret the filename arguments in any way, meaning newline
-    characters will be printed directly as '\n' instead of resulting in
-    a line break.
+    This class is the exception class used for all sorts of process
+    execution failures. We do not use OSError or one of its derivates
+    (e.g., ChildProcessError) as base class because it contains
+    attributes not useful in our context (errno, for example). Most
+    importantly, however, we provide this custom class because OSError
+    does not interpret the filename arguments in any way, meaning
+    newline characters will be printed directly as '\n' instead of
+    resulting in a line break.
   """
   def __init__(self, status, name, stderr=None):
     super().__init__()
