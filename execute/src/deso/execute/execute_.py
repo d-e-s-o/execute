@@ -641,7 +641,13 @@ def pipeline(commands, env=None, stdin=None, stdout=None, stderr=b""):
   # to do is to wait for all the processes to finish and to clean them
   # up.
   _wait(pids, commands, data_err)
-  return data_out, data_err
+
+  if stdout is not None and stderr is not None:
+    return data_out, data_err
+  elif stdout is not None:
+    return data_out
+  elif stderr is not None:
+    return data_err
 
 
 def _spring(commands, env, fds):
@@ -789,4 +795,10 @@ def spring(commands, env=None, stdout=None, stderr=b""):
     data_out, data_err = fds.data()
 
   _wait(pids, commands, data_err, status=status, failed=failed)
-  return data_out, data_err
+
+  if stdout is not None and stderr is not None:
+    return data_out, data_err
+  elif stdout is not None:
+    return data_out
+  elif stderr is not None:
+    return data_err
