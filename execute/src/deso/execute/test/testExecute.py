@@ -287,6 +287,25 @@ class TestExecute(TestCase):
     self.assertTrue(line2.endswith("records out"))
 
 
+  def testRedirectedStreamIsNotReturned(self):
+    """Verify that if a stream is redirected into a file it nothing is returned."""
+    def doTest(execute_fn):
+      """Check that no undesired data is returned."""
+      with TemporaryFile() as file_:
+        result = execute_fn(_ECHO, "test1", stdout=file_.fileno())
+        self.assertIsNone(result)
+
+        result = execute_fn(_ECHO, "test2", stderr=file_.fileno())
+        self.assertIsNone(result)
+
+        result = execute_fn(_ECHO, "test3", stdout=file_.fileno(), stderr=file_.fileno())
+        self.assertIsNone(result)
+
+    doTest(execute)
+    doTest(lambda *a, **k: pipeline([list(a)], **k))
+    doTest(lambda *a, **k: spring([[list(a)]], **k))
+
+
   def testExecuteThrowsOnCommandFailure(self):
     """Verify that a failing command causes an exception to be raised."""
     with self.assertRaises(ProcessError):

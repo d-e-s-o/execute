@@ -642,11 +642,16 @@ def pipeline(commands, env=None, stdin=None, stdout=None, stderr=b""):
   # up.
   _wait(pids, commands, data_err)
 
-  if stdout is not None and stderr is not None:
+  # We mirror the logic from __init__ in that we special case values of
+  # None and of type int and treating everything else as data.
+  stdout_valid = stdout is not None and not isinstance(stdout, int)
+  stderr_valid = stderr is not None and not isinstance(stderr, int)
+
+  if stdout_valid and stderr_valid:
     return data_out, data_err
-  elif stdout is not None:
+  elif stdout_valid:
     return data_out
-  elif stderr is not None:
+  elif stderr_valid:
     return data_err
 
 
@@ -796,9 +801,12 @@ def spring(commands, env=None, stdout=None, stderr=b""):
 
   _wait(pids, commands, data_err, status=status, failed=failed)
 
-  if stdout is not None and stderr is not None:
+  stdout_valid = stdout is not None and not isinstance(stdout, int)
+  stderr_valid = stderr is not None and not isinstance(stderr, int)
+
+  if stdout_valid and stderr_valid:
     return data_out, data_err
-  elif stdout is not None:
+  elif stdout_valid:
     return data_out
-  elif stderr is not None:
+  elif stderr_valid:
     return data_err
