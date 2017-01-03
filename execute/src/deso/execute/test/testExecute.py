@@ -1,7 +1,7 @@
 # testExecute.py
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2016 Daniel Mueller (deso@posteo.net)              *
+# *   Copyright (C) 2014-2017 Daniel Mueller (deso@posteo.net)              *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -741,6 +741,25 @@ class TestExecute(TestCase):
 
     stdout = runAndRead(close=True)
     self.assertTrue(stdout == b"PARENT\n", stdout)
+
+
+  def testProcessErrorStderrMemser(self):
+    """Verify that the ProcessError's stderr is set properly."""
+    def doTest(execute_fn):
+      """Check that the stderr member is set properly."""
+      with self.assertRaises(ProcessError) as e:
+        execute_fn(executable, "-c", "exit(1)", stderr=b"")
+
+      self.assertEqual(e.exception.stderr, "")
+
+      with self.assertRaises(ProcessError) as e:
+        execute_fn(executable, "-c", "exit(1)", stderr=None)
+
+      self.assertIsNone(e.exception.stderr)
+
+    doTest(execute)
+    doTest(lambda *a, **k: pipeline([list(a)], **k))
+    doTest(lambda *a, **k: spring([[list(a)]], **k))
 
 
 if __name__ == "__main__":
