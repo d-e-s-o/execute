@@ -1,7 +1,7 @@
 # execute_.py
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2017 Daniel Mueller (deso@posteo.net)              *
+# *   Copyright (C) 2014-2018 Daniel Mueller (deso@posteo.net)              *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -53,8 +53,15 @@
   to influence this behavior on a per-child basis.
 """
 
+from contextlib import (
+  contextmanager,
+)
 from deso.cleanup import (
   defer,
+)
+from json import (
+  dumps,
+  loads,
 )
 from os import (
   O_RDWR,
@@ -93,6 +100,15 @@ from sys import (
   stdin as stdin_,
   stdout as stdout_,
 )
+
+
+# An error code used when communicating exec* failures from a forked off
+# child to the parent. Note that there is nothing special about this
+# error code and it could in fact also be used as a legitimate exit code
+# by child applications. However, we have additional parsing of the
+# raised exception in place that, if not provided by a child, would
+# fail, causing us to fall back to the regular error reporting path.
+EXEC_FAIL = 127
 
 
 class ProcessError(RuntimeError):
@@ -155,6 +171,37 @@ class ProcessError(RuntimeError):
   def stderr(self):
     """Retrieve the stderr output, if any, of the process that failed."""
     return self._stderr
+
+
+@contextmanager
+def exitOnException():
+  """Context manager to exit the program on any exception.
+
+    This context manager is meant to be used in forked-off children for
+    the brief period of time between the fork and the exec. Any
+    exceptions raised during this time are encoded and emitted to
+    stderr, where they can be picked up by the parent process.
+    Afterwards the child will _exit.
+  """
+  try:
+    yield
+  except Exception as e:
+    # Ideally we would want to take the exception, serialize it, and
+    # then deserialize it in the parent and re-raise it. That is not
+    # possible. It is not possible because an exception contains a
+    # 'traceback' object and those cannot be created or cloned or
+    # otherwise manufactured from within Python, probably because they
+    # originate in C. We can create a StackSummary object effectively
+    # capturing most of the information, but we have no way to really
+    # synthesize the same exception (without that the StackSummary
+    # object is pretty much useless). So in the end all we can do is to
+    # provide all the information necessary to recreate the exception
+    # minus the traceback. So that's what we do. Ultimately we need the
+    # exception class' name and the arguments passed to it.
+    serialized = dumps((e.__class__.__name__,) + e.args).encode("ascii")
+    write(stderr_.fileno(), serialized)
+
+    _exit(EXEC_FAIL)
 
 
 def _exec(*args, env=None):
@@ -220,33 +267,29 @@ def _pipeline(commands, env, fd_in, fd_out, fd_err):
     child = pids[-1] == 0
 
     if child:
-      if not first:
-        # Establish communication channel with previous process.
-        dup2(fd_in_old, stdin_.fileno())
-        close_(fd_in_old)
-        close_(fd_out_old)
-      else:
-        dup2(fd_in, stdin_.fileno())
+      with exitOnException():
+        if not first:
+          # Establish communication channel with previous process.
+          dup2(fd_in_old, stdin_.fileno())
+          close_(fd_in_old)
+          close_(fd_out_old)
+        else:
+          dup2(fd_in, stdin_.fileno())
 
-      if not last:
-        # Establish communication channel with next process.
-        close_(fd_in_new)
-        dup2(fd_out_new, stdout_.fileno())
-        close_(fd_out_new)
-      else:
-        dup2(fd_out, stdout_.fileno())
+        if not last:
+          # Establish communication channel with next process.
+          close_(fd_in_new)
+          dup2(fd_out_new, stdout_.fileno())
+          close_(fd_out_new)
+        else:
+          dup2(fd_out, stdout_.fileno())
 
-      # Stderr is redirected for all commands in the pipeline because each
-      # process' output should be rerouted and stderr is not affected by
-      # the pipe between the processes in any way.
-      dup2(fd_err, stderr_.fileno())
+        # Stderr is redirected for all commands in the pipeline because each
+        # process' output should be rerouted and stderr is not affected by
+        # the pipe between the processes in any way.
+        dup2(fd_err, stderr_.fileno())
 
-      _exec(*command, env=env)
-      # This statement should never be reached: either exec fails in
-      # which case a Python exception should be raised or the program is
-      # started in which case this process' image is overwritten anyway.
-      # Keep it to be absolutely safe.
-      _exit(-1)
+        _exec(*command, env=env)
     else:
       if not first:
         close_(fd_in_old)
@@ -357,6 +400,21 @@ def _wait(pids, commands, data_err, status=0, failed=None):
       status = this_status
 
   if status != 0:
+    if status == EXEC_FAIL and data_err is not None:
+      # In case of an exec failure we make sure to print information
+      # regarding the exception we encountered to stderr. So here we
+      # read back this information and recreate the exception. Note that
+      # the traceback is lost. It is not possible to transfer it using
+      # means provided by Python. Note furthermore that by indexing into
+      # 'builtins' we assume that the exception that got raised was a
+      # built in one. Since we only have this logic of serializing and
+      # deserializing in place for the exec* style functions that
+      # property is guaranteed.
+      import builtins
+      class_, *args = loads(data_err.decode("ascii"))
+      exc = getattr(builtins, class_)(*args)
+      raise exc
+
     error = data_err.decode("utf-8") if data_err is not None else None
     raise ProcessError(status, failed, error)
 
@@ -715,16 +773,16 @@ def _spring(commands, env, fds):
     child = pid == 0
 
     if child:
-      dup2(fd_in, stdin_.fileno())
-      dup2(fd_out_new, stdout_.fileno())
-      dup2(fd_err, stderr_.fileno())
+      with exitOnException():
+        dup2(fd_in, stdin_.fileno())
+        dup2(fd_out_new, stdout_.fileno())
+        dup2(fd_err, stderr_.fileno())
 
-      if pipe_cmds:
-        close_(fd_in_new)
-        close_(fd_out_new)
+        if pipe_cmds:
+          close_(fd_in_new)
+          close_(fd_out_new)
 
-      _exec(*command, env=env)
-      _exit(-1)
+        _exec(*command, env=env)
     else:
       # After we started the first command from the spring we need to
       # make sure that there is a consumer of the output data. If there

@@ -1,7 +1,7 @@
 # testExecute.py
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2017 Daniel Mueller (deso@posteo.net)              *
+# *   Copyright (C) 2014-2018 Daniel Mueller (deso@posteo.net)              *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -29,6 +29,9 @@ from deso.execute import (
 )
 from deso.execute.execute_ import (
   eventToString,
+)
+from itertools import (
+  permutations,
 )
 from os import (
   environ,
@@ -125,6 +128,12 @@ class TestExecute(TestCase):
       raise ProcessError(1, _FALSE, "\t %s\n\n" % string)
 
     self.assertEqual(e.exception.stderr, string)
+
+
+  def testExecFailureIsReportedProperly(self):
+    """Verify that exec exceptions are bubbled up properly."""
+    with self.assertRaises(FileNotFoundError):
+      execute("/non/existent/file", "some", "param", stderr=b"")
 
 
   def testExitCodeTruncation(self):
@@ -497,6 +506,14 @@ class TestExecute(TestCase):
     self.assertEqual(e.exception.status, 42)
 
 
+  def testPipelineFileNotFoundError(self):
+    """Verify that exec exceptions are bubbled up properly."""
+    for pipe_cmds in set(permutations(["/no/such/file", _TRUE, _TRUE])):
+      pipe_cmds = list(map(lambda x: [x], pipe_cmds))
+      with self.assertRaises(FileNotFoundError):
+        pipeline(pipe_cmds, stderr=b"")
+
+
   def testPipelineWithRead(self):
     """Test execution of a pipeline and reading the output."""
     commands = [
@@ -640,6 +657,17 @@ class TestExecute(TestCase):
       output = spring(commands, stdout=b"")
 
       self.assertEqual(output, b"success\nyippie\nwohoo\n")
+
+
+  def testSpringExecFailure(self):
+    """Verify that exec exceptions are bubbled up properly."""
+    commands = [
+      [[_ECHO, "foobar"]],
+      ["/non/existent/file", "test2"],
+    ]
+
+    with self.assertRaises(FileNotFoundError):
+      spring(commands, stderr=b"")
 
 
   def testSpringError(self):
