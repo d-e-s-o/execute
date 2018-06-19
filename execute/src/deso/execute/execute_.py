@@ -396,7 +396,7 @@ def _wait(pids, commands, data_err, status=0, failed=None):
     this_status = _waitpid(pid)
     if this_status != 0 and status == 0:
       # Only remember the first failure here, then continue clean up.
-      failed = formatCommands([commands[i]])
+      failed = commands[i]
       status = this_status
 
   if status != 0:
@@ -412,11 +412,17 @@ def _wait(pids, commands, data_err, status=0, failed=None):
       # property is guaranteed.
       import builtins
       class_, *args = loads(data_err.decode("ascii"))
+      # We treat the FileNotFoundError exception special and actually
+      # supply the filename of the failed command.
+      if class_ == FileNotFoundError.__name__:
+        args.append(failed[0])
+
       exc = getattr(builtins, class_)(*args)
       raise exc
 
     error = data_err.decode("utf-8") if data_err is not None else None
-    raise ProcessError(status, failed, error)
+    command = formatCommands([failed])
+    raise ProcessError(status, command, error)
 
 
 def _write(data):

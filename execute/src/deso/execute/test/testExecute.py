@@ -136,6 +136,14 @@ class TestExecute(TestCase):
       execute("/non/existent/file", "some", "param", stderr=b"")
 
 
+  def testFileNotFoundFileNameIsReported(self):
+    """Verify that FileNotFoundError objects have 'filename' attribute set."""
+    with self.assertRaises(FileNotFoundError) as e:
+      execute("/non/existent/file", "some", "param", stderr=b"")
+
+    self.assertEqual(e.exception.filename, "/non/existent/file")
+
+
   def testExitCodeTruncation(self):
     """Check that exit codes are still truncated.
 
