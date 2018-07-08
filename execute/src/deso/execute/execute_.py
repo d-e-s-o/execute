@@ -864,6 +864,14 @@ def spring(commands, env=None, stdout=None, stderr=b""):
     data_out, data_err = fds.data()
 
   error = data_err if stderr is not None else None
+  # Consider a spring: [[a, b, c, d], e, f, g]. Error reporting here
+  # works by propagating up an error via 'failed' if it happened in the
+  # [a, b, c] part of the spring. If d failed and for all failures in
+  # [e, f, g] we proceed as we do for pipelines. To make sure that the
+  # correct command is reported as failed (we index into "commands") we
+  # "flatten" the commands list here. That is, the command list becomes
+  # [d, e, f, g].
+  commands = [commands[0][-1]] + commands[1:]
   _wait(pids, commands, error, status=status, failed=failed)
 
   stdout_valid = stdout is not None and not isinstance(stdout, int)

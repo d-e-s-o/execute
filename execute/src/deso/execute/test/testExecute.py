@@ -695,6 +695,17 @@ class TestExecute(TestCase):
         spring(commands, stderr=b"")
 
 
+  def testSpringErrorFormatting(self):
+    """Verify that errors reported in a spring are formatted properly."""
+    regex = r"^\[Status 1\] %s$" % _FALSE
+
+    for commands in set(permutations([_TRUE, _TRUE, _FALSE])):
+      spring_cmds = [list(map(lambda x: [x], commands[0:2])), [commands[2]]]
+
+      with self.assertRaisesRegex(ProcessError, regex):
+        spring(spring_cmds, stderr=b"")
+
+
   def testSpringErrorStatus(self):
     """Verify that the reported spring execution status is correct."""
     def doTest(spring_cmd, pipe_cmd, formatted):
