@@ -199,7 +199,12 @@ def exitOnException(interr):
     # minus the traceback. So that's what we do. Ultimately we need the
     # exception class' name and the arguments passed to it.
     serialized = dumps((e.__class__.__name__,) + e.args).encode("ascii")
-    write(interr, serialized)
+    # We separate each exception by a newline. That is required because
+    # multiple child processes may fail and write data but we are only
+    # interested in (and, in fact, can only deal with) the data from the
+    # first child. So on the decoding side we only look at the first
+    # line.
+    write(interr, serialized + b"\n")
 
     _exit(EXEC_FAIL)
 
@@ -411,7 +416,10 @@ def _wait(pids, commands, data_err, int_err, status=0, failed=None):
       # deserializing in place for the exec* style functions that
       # property is guaranteed.
       import builtins
-      class_, *args = loads(int_err.decode("ascii"))
+      # Multiple children may fail and each will print the error it
+      # encountered, separated by a new line symbol. We are only
+      # interested in the error of the first one.
+      class_, *args = loads(int_err.decode("ascii").splitlines()[0])
       # We treat the FileNotFoundError exception special and actually
       # supply the filename of the failed command.
       if class_ == FileNotFoundError.__name__:

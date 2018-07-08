@@ -535,6 +535,12 @@ class TestExecute(TestCase):
         pipeline(pipe_cmds, stderr=b"some-data")
 
 
+  def testMultiplePipelineFailures(self):
+    """Verify that multiple pipeline failures are reported properly."""
+    with self.assertRaises(ProcessError):
+      pipeline([[_FALSE], [_FALSE], [_FALSE]], stderr=b"")
+
+
   def testPipelineWithRead(self):
     """Test execution of a pipeline and reading the output."""
     commands = [
