@@ -29,6 +29,7 @@ from deso.execute import (
 )
 from deso.execute.execute_ import (
   eventToString,
+  EXEC_FAIL,
 )
 from itertools import (
   permutations,
@@ -135,6 +136,9 @@ class TestExecute(TestCase):
     with self.assertRaises(FileNotFoundError):
       execute("/non/existent/file", "some", "param", stderr=b"")
 
+    with self.assertRaises(FileNotFoundError):
+      execute("/non/existent/file", "some", "param", stderr=b"initialData")
+
 
   def testFileNotFoundFileNameIsReported(self):
     """Verify that FileNotFoundError objects have 'filename' attribute set."""
@@ -168,6 +172,12 @@ class TestExecute(TestCase):
       execute(executable, "-c", "exit(-1)")
 
     self.assertEqual(e.exception.status, 255)
+
+
+  def testExitCodeIntErr(self):
+    """Verify that regular failures that use EXEC_FAIL's error code work properly."""
+    with self.assertRaises(ProcessError):
+      execute(executable, "-c", "exit(%d)" % EXEC_FAIL)
 
 
   def testExitCodeForSignals(self):
@@ -521,6 +531,9 @@ class TestExecute(TestCase):
       with self.assertRaises(FileNotFoundError):
         pipeline(pipe_cmds, stderr=b"")
 
+      with self.assertRaises(FileNotFoundError):
+        pipeline(pipe_cmds, stderr=b"some-data")
+
 
   def testPipelineWithRead(self):
     """Test execution of a pipeline and reading the output."""
@@ -676,6 +689,9 @@ class TestExecute(TestCase):
 
     with self.assertRaises(FileNotFoundError):
       spring(commands, stderr=b"")
+
+    with self.assertRaises(FileNotFoundError):
+      spring(commands, stderr=b"some-data")
 
 
   def testSpringError(self):

@@ -174,7 +174,7 @@ class ProcessError(RuntimeError):
 
 
 @contextmanager
-def exitOnException():
+def exitOnException(interr):
   """Context manager to exit the program on any exception.
 
     This context manager is meant to be used in forked-off children for
@@ -199,7 +199,7 @@ def exitOnException():
     # minus the traceback. So that's what we do. Ultimately we need the
     # exception class' name and the arguments passed to it.
     serialized = dumps((e.__class__.__name__,) + e.args).encode("ascii")
-    write(stderr_.fileno(), serialized)
+    write(interr, serialized)
 
     _exit(EXEC_FAIL)
 
@@ -251,7 +251,7 @@ def execute(*args, env=None, stdin=None, stdout=None, stderr=b""):
   return pipeline([list(args)], env, stdin, stdout, stderr)
 
 
-def _pipeline(commands, env, fd_in, fd_out, fd_err):
+def _pipeline(commands, env, fd_in, fd_out, fd_err, fd_interr):
   """Run a series of commands connected by their stdout/stdin."""
   pids = []
   first = True
@@ -267,7 +267,7 @@ def _pipeline(commands, env, fd_in, fd_out, fd_err):
     child = pids[-1] == 0
 
     if child:
-      with exitOnException():
+      with exitOnException(fd_interr):
         if not first:
           # Establish communication channel with previous process.
           dup2(fd_in_old, stdin_.fileno())
@@ -358,7 +358,7 @@ def formatCommands(commands):
   return s
 
 
-def _wait(pids, commands, data_err, status=0, failed=None):
+def _wait(pids, commands, data_err, int_err, status=0, failed=None):
   """Wait for all processes represented by a list of process IDs.
 
     Although it might not seem necessary to wait for any other than the
@@ -400,7 +400,7 @@ def _wait(pids, commands, data_err, status=0, failed=None):
       status = this_status
 
   if status != 0:
-    if status == EXEC_FAIL and data_err is not None:
+    if status == EXEC_FAIL and int_err:
       # In case of an exec failure we make sure to print information
       # regarding the exception we encountered to stderr. So here we
       # read back this information and recreate the exception. Note that
@@ -411,7 +411,7 @@ def _wait(pids, commands, data_err, status=0, failed=None):
       # deserializing in place for the exec* style functions that
       # property is guaranteed.
       import builtins
-      class_, *args = loads(data_err.decode("ascii"))
+      class_, *args = loads(int_err.decode("ascii"))
       # We treat the FileNotFoundError exception special and actually
       # supply the filename of the failed command.
       if class_ == FileNotFoundError.__name__:
@@ -501,12 +501,14 @@ class _PipelineFileDescriptors:
     # poll method that yielded.
     self._timeout = None
 
-    # We need three dict objects, each representing one of the available
-    # data channels. Depending on whether the channel is actually used
-    # or not it gets populated on demand or stays empty, respectively.
+    # We need four dict objects, each representing one of the available
+    # std data channels and an internal channel used for error
+    # reporting. Depending on whether the channel is actually used or
+    # not it gets populated on demand or stays empty, respectively.
     self._stdin = {}
     self._stdout = {}
     self._stderr = {}
+    self._interr = {}
 
     # We want to redirect all file descriptors that we do not want
     # anything from to /dev/null. But we only want to open the latter
@@ -545,6 +547,7 @@ class _PipelineFileDescriptors:
     else:
       pipeRead(stderr, self._stderr)
 
+    pipeRead(b"", self._interr)
 
   def poll(self):
     """Poll the file pipe descriptors for more data until each indicated that it is done.
@@ -579,11 +582,7 @@ class _PipelineFileDescriptors:
         data["unreg"] = d.defer(poll_.unregister, data["in"])
         polls[data["in"]] = data
 
-    # We need a poll object if we want to send any data to stdin or want
-    # to receive any data from stdout or stderr.
-    if self._stdin or self._stdout or self._stderr:
-      poll_ = poll()
-
+    poll_ = poll()
     # We use a dictionary here to elegantly look up the entry (which is,
     # another dictionary) for the respective file descriptor we received
     # an event for and to decide if we need to poll more.
@@ -594,6 +593,7 @@ class _PipelineFileDescriptors:
       pollWrite(self._stdin)
       pollRead(self._stdout)
       pollRead(self._stderr)
+      pollRead(self._interr)
 
       while polls:
         events = poll_.poll(self._timeout)
@@ -671,10 +671,17 @@ class _PipelineFileDescriptors:
     return self._stderr["out"] if self._stderr else self._file_err
 
 
+  @property
+  def interr(self):
+    """Retrieve the interr file descriptor ready to be handed to a process."""
+    return self._interr["out"]
+
+
   def data(self):
-    """Retrieve the data polled so far as a (stdout, stderr) tuple."""
+    """Retrieve the data polled so far as a (stdout, stderr, interr) triple."""
     return self._stdout["data"] if self._stdout else b"",\
-           self._stderr["data"] if self._stderr else b""
+           self._stderr["data"] if self._stderr else b"",\
+           self._interr["data"]
 
 
 def pipeline(commands, env=None, stdin=None, stdout=None, stderr=b""):
@@ -697,17 +704,17 @@ def pipeline(commands, env=None, stdin=None, stdout=None, stderr=b""):
 
       # Finally execute our pipeline and pass in the prepared file
       # descriptors to use.
-      pids = _pipeline(commands, env, fds.stdin, fds.stdout, fds.stderr)
+      pids = _pipeline(commands, env, fds.stdin, fds.stdout, fds.stderr, fds.interr)
 
     for _ in fds.poll():
       pass
 
-    data_out, data_err = fds.data()
+    data_out, data_err, int_err = fds.data()
 
   # We have read or written all data that was available, the last thing
   # to do is to wait for all the processes to finish and to clean them
   # up.
-  _wait(pids, commands, data_err if stderr is not None else None)
+  _wait(pids, commands, data_err if stderr is not None else None, int_err)
 
   # We mirror the logic from __init__ in that we special case values of
   # None and of type int and treating everything else as data.
@@ -759,6 +766,7 @@ def _spring(commands, env, fds):
   fd_in = fds.stdin
   fd_out = fds.stdout
   fd_err = fds.stderr
+  fd_interr = fds.interr
 
   # A spring consists of a number of commands executed in a serial
   # fashion with their output accumulated to a single destination and a
@@ -782,7 +790,7 @@ def _spring(commands, env, fds):
     child = pid == 0
 
     if child:
-      with exitOnException():
+      with exitOnException(fd_interr):
         dup2(fd_in, stdin_.fileno())
         dup2(fd_out_new, stdout_.fileno())
         dup2(fd_err, stderr_.fileno())
@@ -800,7 +808,7 @@ def _spring(commands, env, fds):
       # in the form of a pipeline.
       if first:
         if pipe_cmds:
-          pids += _pipeline(pipe_cmds, env, fd_in_new, fd_out, fd_err)
+          pids += _pipeline(pipe_cmds, env, fd_in_new, fd_out, fd_err, fd_interr)
 
         first = False
 
@@ -864,7 +872,7 @@ def spring(commands, env=None, stdout=None, stderr=b""):
     for _ in poller:
       pass
 
-    data_out, data_err = fds.data()
+    data_out, data_err, int_err = fds.data()
 
   error = data_err if stderr is not None else None
   # Consider a spring: [[a, b, c, d], e, f, g]. Error reporting here
@@ -875,7 +883,7 @@ def spring(commands, env=None, stdout=None, stderr=b""):
   # "flatten" the commands list here. That is, the command list becomes
   # [d, e, f, g].
   commands = [commands[0][-1]] + commands[1:]
-  _wait(pids, commands, error, status=status, failed=failed)
+  _wait(pids, commands, error, int_err, status=status, failed=failed)
 
   stdout_valid = stdout is not None and not isinstance(stdout, int)
   stderr_valid = stderr is not None and not isinstance(stderr, int)
