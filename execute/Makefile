@@ -1,7 +1,7 @@
 # Makefile
 
 #/***************************************************************************
-# *   Copyright (C) 2014-2015,2017 Daniel Mueller (deso@posteo.net)         *
+# *   Copyright (C) 2014-2015,2017-2018 Daniel Mueller (deso@posteo.net)    *
 # *                                                                         *
 # *   This program is free software: you can redistribute it and/or modify  *
 # *   it under the terms of the GNU General Public License as published by  *
@@ -18,6 +18,7 @@
 # ***************************************************************************/
 
 ROOT := $(shell pwd)/..
+PYTHONPATH := "$(ROOT)/cleanup/src/:$(ROOT)/execute/src/:${PYTHONPATH}"\
 
 
 .PHONY: all
@@ -26,9 +27,17 @@ all: test testSetup
 
 .PHONY: test
 test:
-	@PYTHONPATH="$(ROOT)/cleanup/src/:$(ROOT)/execute/src/:${PYTHONPATH}"\
+	@PYTHONPATH="$(PYTHONPATH)"\
 	 PYTHONDONTWRITEBYTECODE=1\
 	  python -m unittest --verbose --buffer deso.execute.test.allTests
+
+
+.PHONY: %
+%:
+	@echo "Running deso.execute.test.$@ ..."
+	@PYTHONPATH="$(PYTHONPATH)"\
+	 PYTHONDONTWRITEBYTECODE=1\
+		python -m unittest --verbose --buffer deso.execute.test.$@
 
 
 # The testing procedure is quite involved. First, we clone this
