@@ -653,16 +653,19 @@ class _PipelineFileDescriptors:
     self._timeout = None if can_block else 0
 
 
+  @property
   def stdin(self):
     """Retrieve the stdin file descriptor ready to be handed to a process."""
     return self._stdin["in"] if self._stdin else self._file_in
 
 
+  @property
   def stdout(self):
     """Retrieve the stdout file descriptor ready to be handed to a process."""
     return self._stdout["out"] if self._stdout else self._file_out
 
 
+  @property
   def stderr(self):
     """Retrieve the stderr file descriptor ready to be handed to a process."""
     return self._stderr["out"] if self._stderr else self._file_err
@@ -694,7 +697,7 @@ def pipeline(commands, env=None, stdin=None, stdout=None, stderr=b""):
 
       # Finally execute our pipeline and pass in the prepared file
       # descriptors to use.
-      pids = _pipeline(commands, env, fds.stdin(), fds.stdout(), fds.stderr())
+      pids = _pipeline(commands, env, fds.stdin, fds.stdout, fds.stderr)
 
     for _ in fds.poll():
       pass
@@ -753,9 +756,9 @@ def _spring(commands, env, fds):
   failed = None
   poller = None
 
-  fd_in = fds.stdin()
-  fd_out = fds.stdout()
-  fd_err = fds.stderr()
+  fd_in = fds.stdin
+  fd_out = fds.stdout
+  fd_err = fds.stderr
 
   # A spring consists of a number of commands executed in a serial
   # fashion with their output accumulated to a single destination and a
